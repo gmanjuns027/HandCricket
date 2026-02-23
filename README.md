@@ -9,7 +9,7 @@
 
 - **Live demo**: [https://poison-game-one.vercel.app/](https://poison-game-one.vercel.app/)
 - **GitHub**: [https://github.com/gmanjuns027/Poison-Game](https://github.com/gmanjuns027/Poison-Game)
-- **Video walkthrough**: (placeholder) [Watch on YouTube](#)
+- **Video walkthrough**: https://youtu.be/oQuolDrd5rA
 
 ---
 
