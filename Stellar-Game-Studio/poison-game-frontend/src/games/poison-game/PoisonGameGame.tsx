@@ -118,18 +118,16 @@ export function PoisonGameGame({
   const [myBoard, setMyBoard] = useState<TileType[]>(() => Array(15).fill(0) as TileType[]);
   const [activeTool, setActiveTool] = useState<TileType>(1);
   const [boardCommitted, setBoardCommitted] = useState(false);
+  // Store the full board data (tiles, salt, commitment) in memory
+  const [savedBoardData, setSavedBoardData] = useState<{
+    tiles: TileType[]; salt: bigint; commitment: Buffer;
+  } | null>(null);
 
   // ── Play ────────────────────────────────────────────────────────────────
   const [selectedAttackTile, setSelectedAttackTile] = useState<number | null>(null);
 
   const actionLock = useRef(false);
   const isBusy = loading || isCommitting || isResponding;
-
-  // Load board data for the current player from localStorage
-  const currentBoardData = useMemo(() => {
-    if (screen !== 'game' || !myAddress || !sessionId) return null;
-    return loadBoard(sessionId, myAddress);
-  }, [screen, sessionId, myAddress]);
 
   // Derived counts for board validation
   const poisonCount = myBoard.filter(t => t === 1).length;
@@ -181,8 +179,10 @@ export function PoisonGameGame({
     if (screen !== 'game' || !myAddress) return;
     const loaded = loadBoard(sessionId, myAddress);
     if (loaded) {
+      setSavedBoardData(loaded);
       setMyBoard(loaded.tiles);
     } else {
+      setSavedBoardData(null);
       setMyBoard(Array(15).fill(0) as TileType[]);
     }
   }, [screen, sessionId, myAddress]);
@@ -266,6 +266,7 @@ export function PoisonGameGame({
     setGamePhase('commit');
     setMyBoard(Array(15).fill(0) as TileType[]);
     setBoardCommitted(false);
+    setSavedBoardData(null);
     setSelectedAttackTile(null);
     setZkProgress(null);
     setError(null);
@@ -288,6 +289,7 @@ export function PoisonGameGame({
       const signer     = getContractSigner();
 
       saveBoard(sessionId, myAddress, myBoard, salt, commitment);
+      setSavedBoardData({ tiles: myBoard, salt, commitment });
 
       await svc.commitBoard(sessionId, myAddress, commitment, signer);
 
@@ -296,6 +298,7 @@ export function PoisonGameGame({
     } catch (err) {
       setBoardCommitted(false);
       clearBoard(sessionId, myAddress);
+      setSavedBoardData(null);
       setError(err instanceof Error ? err.message : 'Failed to commit board');
     } finally {
       setIsCommitting(false);
@@ -333,7 +336,8 @@ export function PoisonGameGame({
       setIsResponding(true);
       setError(null);
       try {
-        const boardData = currentBoardData;
+        // Use in‑memory savedBoardData first, fall back to localStorage
+        const boardData = savedBoardData ?? loadBoard(sessionId, myAddress);
         if (!boardData) throw new Error('Board data not found. Did your browser storage get cleared?');
 
         const tileType = boardData.tiles[pendingTile] as TileType;
@@ -511,9 +515,9 @@ export function PoisonGameGame({
           {isMyDefenseTurn && (
             <div className="defense-section">
               <p className="phase__title">🛡️ You were attacked on tile {pendingTile}!</p>
-              {currentBoardData && (
+              {savedBoardData && (
                 <p className="phase__hint">
-                  Your tile: <strong>{TILE_EMOJI[currentBoardData.tiles[pendingTile]]} {TILE_LABEL[currentBoardData.tiles[pendingTile]]}</strong> — prove it with a ZK proof.
+                  Your tile: <strong>{TILE_EMOJI[savedBoardData.tiles[pendingTile]]} {TILE_LABEL[savedBoardData.tiles[pendingTile]]}</strong> — prove it with a ZK proof.
                 </p>
               )}
               <button className="action-btn action-btn--defend" onClick={handleRespondToAttack} disabled={isResponding}>
@@ -539,7 +543,7 @@ export function PoisonGameGame({
               <div className="board-grid board-grid--small">
                 {Array.from({ length: 15 }, (_, idx) => {
                   const attacked = myRevealedTiles.find(r => r.tile_index === idx);
-                  const myTile   = currentBoardData?.tiles[idx] ?? 0;
+                  const myTile   = savedBoardData?.tiles[idx] ?? 0;
                   return (
                     <div key={idx} className={`tile tile--small ${attacked ? 'tile--revealed' : ''}`}>
                       {attacked ? TILE_EMOJI[attacked.tile_type] : TILE_EMOJI[myTile]}
